@@ -5,12 +5,11 @@ import (
 	"io"
 	"sync"
 	"time"
-
-	"github.com/gofrs/uuid"
 )
 
 const (
-	defaultFrameSize = 3000
+	defaultFrameSize        = 3000
+	defaultMetadataInterval = 65536
 )
 
 type StreamOpts func(s *Stream)
@@ -25,6 +24,10 @@ func WithForceSampleRate(r int) StreamOpts {
 
 func WithShoutcastMetadata() StreamOpts {
 	return func(s *Stream) { s.allowShoutcastMetadata = true }
+}
+
+func WithMetadataInterval(interval int64) StreamOpts {
+	return func(s *Stream) { s.metadataInterval = interval }
 }
 
 type Audio struct {
@@ -53,6 +56,10 @@ func NewStream(opts ...StreamOpts) *Stream {
 		s.frameSize = defaultFrameSize
 	}
 
+	if s.metadataInterval == 0 {
+		s.metadataInterval = defaultMetadataInterval
+	}
+
 	return s
 }
 
@@ -61,11 +68,13 @@ type Stream struct {
 	sampleRate             int
 	allowShoutcastMetadata bool
 	blockOnNoAudio         bool
+	metadataInterval       int64
 
 	sync          *sync.Mutex
 	clientTimeout chan *Client
 	listeners     map[string]*Client
 	queue         []*Audio
+	reading       *Audio
 	playing       *Audio
 }
 
@@ -73,30 +82,6 @@ func (s *Stream) Append(a *Audio) {
 	s.sync.Lock()
 	s.queue = append(s.queue, a)
 	s.sync.Unlock()
-}
-
-type RegisterOpts func(*Client)
-
-func SupportsShoutCastMetadata() RegisterOpts {
-	return func(c *Client) { c.supportShoutCastMetadata = true }
-}
-
-func (s *Stream) Register(opts ...RegisterOpts) (*Client, error) {
-	uuid, err := uuid.NewV4()
-	if err != nil {
-		return nil, err
-	}
-	c := &Client{
-		uuid:   uuid.String(),
-		stream: make(chan []byte),
-	}
-
-	for _, o := range opts {
-		o(c)
-	}
-
-	s.listeners[uuid.String()] = c
-	return c, nil
 }
 
 func (s *Stream) Deregister(c Client) {
@@ -120,24 +105,24 @@ var ErrNoAudioInQueue = errors.New("no audio in stream queue")
 func (s *Stream) Start(clientTimeout time.Duration, timeoutCh chan<- *Client) error {
 	for {
 		// are we done reading/playing a song?
-		if s.playing == nil {
-			playing, err := s.nextAudio()
+		if s.reading == nil {
+			reading, err := s.nextAudio()
 			if err != nil {
 				if err == ErrNoAudioInQueue {
 					continue
 				}
 				return err
 			}
-			s.playing = playing
+			s.reading = reading
 		}
 
 		// read a frame from audio
 		frame := make([]byte, s.frameSize)
-		bytes, err := s.playing.Read(frame)
+		bytes, err := s.reading.Read(frame)
 		if err != nil {
 			// we are done reading this audio file
 			if err == io.EOF {
-				s.playing = nil
+				s.reading = nil
 				continue
 			}
 			return err
@@ -153,7 +138,7 @@ func (s *Stream) Start(clientTimeout time.Duration, timeoutCh chan<- *Client) er
 		for _, c := range s.listeners {
 			go func(c *Client) {
 				select {
-				case c.stream <- frame:
+				case c.frame <- frame:
 				case <-time.After(time.Second):
 					timeoutCh <- c
 				}
