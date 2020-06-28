@@ -1,4 +1,4 @@
-package icestream
+package audiostream
 
 import (
 	"github.com/gofrs/uuid"

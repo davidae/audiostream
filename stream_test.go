@@ -1,4 +1,4 @@
-package icestream_test
+package audiostream_test
 
 import (
 	"bufio"
@@ -13,29 +13,29 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davidae/icestream"
+	"github.com/davidae/audiostream"
 )
 
 // func TestStreamingWhenAudioQueueISEmpty(t *testing.T) {
-// 	s := icestream.NewStream()
+// 	s := audiostream.NewStream()
 // 	err := s.Start()
 
-// 	if err != icestream.ErrNoAudioInQueue {
-// 		t.Errorf("expected error %s, but got %s", icestream.ErrNoAudioInQueue, err)
+// 	if err != audiostream.ErrNoAudioInQueue {
+// 		t.Errorf("expected error %s, but got %s", audiostream.ErrNoAudioInQueue, err)
 // 	}
 // }
 
 func TestStreamingToTwoListenersWithNoMetadata(t *testing.T) {
 	data := "123456789 101112131415161718192021222324252627"
-	s := icestream.NewStream(icestream.WithFramzeSize(2))
-	c1, err := icestream.NewListener()
+	s := audiostream.NewStream(audiostream.WithFramzeSize(2))
+	c1, err := audiostream.NewListener()
 	noError(err, t)
-	c2, err := icestream.NewListener()
+	c2, err := audiostream.NewListener()
 	noError(err, t)
 
 	s.AddListener(c1, c2)
 
-	s.AppendAudio(&icestream.Audio{
+	s.AppendAudio(&audiostream.Audio{
 		Artist:     "Foo ft. Bar",
 		Title:      "Hello world",
 		Filename:   "song.mp3",
@@ -75,12 +75,12 @@ func TestStreamingToTwoListenersWithNoMetadata(t *testing.T) {
 
 func TestStreamingToListenerWithMultipleFiles(t *testing.T) {
 	data := "123456789 101112131415161718192021222324252627"
-	s := icestream.NewStream(icestream.WithFramzeSize(2))
-	c1, err := icestream.NewListener()
+	s := audiostream.NewStream(audiostream.WithFramzeSize(2))
+	c1, err := audiostream.NewListener()
 	noError(err, t)
 
 	s.AddListener(c1)
-	audio := &icestream.Audio{
+	audio := &audiostream.Audio{
 		Artist:     "Foo ft. Bar",
 		Title:      "Hello world",
 		Filename:   "song.mp3",
@@ -136,11 +136,11 @@ func TestStreamingToListenerWithMultipleFiles(t *testing.T) {
 func TestStreamingMetadataWithInterval(t *testing.T) {
 	data := "123456789 101112131415161718192021222324252627"
 	expectedStreamTitle := "Foo ft. Bar - Hello world"
-	s := icestream.NewStream(
-		icestream.WithFramzeSize(len(data)),
+	s := audiostream.NewStream(
+		audiostream.WithFramzeSize(len(data)),
 	)
 
-	s.AppendAudio(&icestream.Audio{
+	s.AppendAudio(&audiostream.Audio{
 		Artist:   "Foo ft. Bar",
 		Title:    "Hello world",
 		Filename: "song.mp3",
@@ -161,7 +161,7 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 			w.Header().Set("icy-metaint", "10")
 			w.Header().Set("icy-name", "hello world")
 
-			client, err := icestream.NewListener(icestream.WithMetadataSupport(10))
+			client, err := audiostream.NewListener(audiostream.WithMetadataSupport(10))
 			noError(err, t)
 			s.AddListener(client)
 

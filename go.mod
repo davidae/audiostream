@@ -1,4 +1,4 @@
-module github.com/davidae/icestream
+module github.com/davidae/audiostream
 
 go 1.13
 

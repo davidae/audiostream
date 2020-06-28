@@ -7,18 +7,18 @@ import (
 	"os"
 	"time"
 
-	"github.com/davidae/icestream"
+	"github.com/davidae/audiostream"
 )
 
 func main() {
-	lazyFileRead := icestream.WithLazyFileRead(icestream.DefaultSleepForFunc())
-	stream := icestream.NewStream(lazyFileRead)
+	lazyFileRead := audiostream.WithLazyFileRead(audiostream.DefaultSleepForFunc())
+	stream := audiostream.NewStream(lazyFileRead)
 	audio, err := os.Open("your-mp3-file.mp3")
 	if err != nil {
 		panic(err)
 	}
 
-	stream.AppendAudio(&icestream.Audio{
+	stream.AppendAudio(&audiostream.Audio{
 		Data:       audio,
 		Artist:     "Fizz",
 		Title:      "Buzz",
@@ -35,7 +35,7 @@ func main() {
 		w.Header().Set("Transfer-Encoding", "chunked")
 		w.Header().Set("Content-Type", "audio/mpeg")
 
-		listener, err := icestream.NewListener()
+		listener, err := audiostream.NewListener()
 		if err != nil {
 			panic(err)
 		}
