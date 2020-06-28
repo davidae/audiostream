@@ -165,6 +165,11 @@ func (s *Stream) Start() error {
 		if s.reading == nil {
 			reading, err := s.dequeue()
 			if err != nil {
+				// ignoring this error for now, might add a callback or smth in the future
+				if err == ErrNoAudioInQueue {
+					time.Sleep(time.Second)
+					continue
+				}
 				return err
 			}
 			s.reading = reading

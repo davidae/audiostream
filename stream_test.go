@@ -16,14 +16,14 @@ import (
 	"github.com/davidae/icestream"
 )
 
-func TestStreamingWhenAudioQueueISEmpty(t *testing.T) {
-	s := icestream.NewStream()
-	err := s.Start()
+// func TestStreamingWhenAudioQueueISEmpty(t *testing.T) {
+// 	s := icestream.NewStream()
+// 	err := s.Start()
 
-	if err != icestream.ErrNoAudioInQueue {
-		t.Errorf("expected error %s, but got %s", icestream.ErrNoAudioInQueue, err)
-	}
-}
+// 	if err != icestream.ErrNoAudioInQueue {
+// 		t.Errorf("expected error %s, but got %s", icestream.ErrNoAudioInQueue, err)
+// 	}
+// }
 
 func TestStreamingToTwoListenersWithNoMetadata(t *testing.T) {
 	data := "123456789 101112131415161718192021222324252627"
@@ -71,7 +71,6 @@ func TestStreamingToTwoListenersWithNoMetadata(t *testing.T) {
 	if outc2 != data {
 		t.Errorf("expected client 2 to have streamed %q, but got %q", data, outc2)
 	}
-	t.Error("ok")
 }
 
 func TestStreamingToListenerWithMultipleFiles(t *testing.T) {
