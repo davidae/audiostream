@@ -5,6 +5,8 @@ import (
 	"io"
 	"sync"
 	"time"
+
+	"github.com/gofrs/uuid"
 )
 
 const (
@@ -33,8 +35,16 @@ func WithLazyFileRead() StreamOpts {
 	return func(s *Stream) { s.lazyFileReading = true }
 }
 
-func WithMetadataInterval(interval int64) StreamOpts {
+func WithMetadataInterval(interval uint64) StreamOpts {
 	return func(s *Stream) { s.metadataInterval = interval }
+}
+
+type RegisterOpts func(*Client)
+
+// SupportsShoutCastMetadata is usually confirmed when checking the incoming
+// request header icy-metadata: 1
+func SupportsShoutCastMetadata() RegisterOpts {
+	return func(c *Client) { c.supportShoutCastMetadata = true }
 }
 
 type Audio struct {
@@ -49,7 +59,7 @@ func (a *Audio) Read(b []byte) (int, error) { return a.Data.Read(b) }
 type Stream struct {
 	frameSize              int
 	allowShoutcastMetadata bool
-	metadataInterval       int64
+	metadataInterval       uint64
 	lazyFileReading        bool
 	clientTimeout          time.Duration
 
@@ -95,12 +105,13 @@ func (s *Stream) Append(a *Audio) {
 
 func (s *Stream) Stop() {
 	s.isStop = true
+	s.listeners = make(map[string]*Client)
 }
 
 // Start starts the stream.
 // error ErrNoAudioInQueue might be returned
 func (s *Stream) Start(handleTimeout func(c *Client)) error {
-	for s.isStop {
+	for !s.isStop {
 		// are we done reading/playing a song?
 		if s.reading == nil {
 			reading, err := s.dequeue()
@@ -158,6 +169,50 @@ func (s *Stream) Start(handleTimeout func(c *Client)) error {
 	}
 
 	return nil
+}
+
+func (s *Stream) Register(opts ...RegisterOpts) (*Client, error) {
+	uuid, err := uuid.NewV4()
+	if err != nil {
+		return nil, err
+	}
+	c := &Client{
+		uuid:             uuid.String(),
+		stream:           make(chan []byte),
+		frame:            make(chan []byte),
+		stop:             make(chan struct{}),
+		headers:          make(map[string]string),
+		isAlive:          true,
+		metadataInterval: s.metadataInterval,
+	}
+
+	for _, o := range opts {
+		o(c)
+	}
+
+	if c.supportShoutCastMetadata && s.allowShoutcastMetadata {
+		c.headers["icy-name"] = "hello world"
+		c.headers["icy-metadata"] = "1"
+		c.headers["icy-metaint"] = "1"
+
+		c.writeMetadata = true
+	}
+
+	s.listeners[uuid.String()] = c
+	return c, nil
+}
+
+func (s *Stream) Deregister(clients ...*Client) {
+	for _, c := range clients {
+		s.clientMux.Lock()
+		delete(s.listeners, c.uuid)
+		c.isAlive = false
+		c.stop <- struct{}{}
+		close(c.stop)
+		close(c.frame)
+		close(c.stream)
+		s.clientMux.Unlock()
+	}
 }
 
 func (s *Stream) dequeue() (*Audio, error) {

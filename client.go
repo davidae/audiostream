@@ -2,15 +2,16 @@ package icestream
 
 import (
 	"net/http"
-
-	"github.com/gofrs/uuid"
 )
 
 type Client struct {
-	uuid          string
-	frame, stream chan []byte
-	stop          chan struct{}
-	isAlive       bool
+	uuid             string
+	frame, stream    chan []byte
+	stop             chan struct{}
+	isAlive          bool
+	writeMetadata    bool
+	startedToStream  bool
+	metadataInterval uint64
 
 	framesWritten            uint64
 	supportShoutCastMetadata bool
@@ -28,63 +29,36 @@ func (c Client) IsAlive() bool {
 }
 
 func (c *Client) Stream() <-chan []byte {
+	if c.startedToStream {
+		return c.stream
+	}
+
+	c.startedToStream = true
+
 	go func() {
-		for {
+		endLoop := false
+		for !endLoop {
 			select {
 			case frame := <-c.frame:
+				// metadata should be within this frame now
+				if c.writeMetadata && c.framesWritten+uint64(len(frame)) >= c.metadataInterval {
+					// how much can we write to stream before we need to send metadta
+					preMetadata := c.metadataInterval - c.framesWritten
+					if preMetadata > 0 {
+						c.stream <- frame[:preMetadata]
+						frame = frame[preMetadata:]
+						c.framesWritten += preMetadata
+					}
+
+				}
+
 				c.framesWritten += uint64(len(frame))
 				c.stream <- frame
 			case <-c.stop:
-				return
+				endLoop = true
 			}
-
 		}
 	}()
 
 	return c.stream
-}
-
-type RegisterOpts func(*Client)
-
-// SupportsShoutCastMetadata is usually confirmed when checking the incoming
-// request header icy-metadata: 1
-func SupportsShoutCastMetadata() RegisterOpts {
-	return func(c *Client) { c.supportShoutCastMetadata = true }
-}
-
-func (s *Stream) Register(opts ...RegisterOpts) (*Client, error) {
-	uuid, err := uuid.NewV4()
-	if err != nil {
-		return nil, err
-	}
-	c := &Client{
-		uuid:    uuid.String(),
-		stream:  make(chan []byte),
-		frame:   make(chan []byte),
-		headers: make(map[string]string),
-		isAlive: true,
-	}
-
-	for _, o := range opts {
-		o(c)
-	}
-
-	if c.supportShoutCastMetadata && s.allowShoutcastMetadata {
-		c.headers["icy-name"] = "hello world"
-		c.headers["icy-metadata"] = "1"
-		c.headers["icy-metaint"] = "1"
-	}
-
-	s.listeners[uuid.String()] = c
-	return c, nil
-}
-
-func (s *Stream) Deregister(c *Client) {
-	s.clientMux.Lock()
-	defer s.clientMux.Unlock()
-	delete(s.listeners, c.uuid)
-	c.isAlive = false
-	c.stop <- struct{}{}
-	close(c.frame)
-	close(c.stream)
 }
