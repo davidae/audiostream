@@ -101,6 +101,7 @@ type Stream struct {
 	listeners           map[string]*Listener
 	queue               []*Audio
 	reading             *Audio
+	eof                 chan int
 	isStop              bool
 }
 
@@ -110,6 +111,7 @@ func NewStream(opts ...StreamOption) *Stream {
 		clientMux: &sync.Mutex{},
 		listeners: make(map[string]*Listener),
 		queue:     []*Audio{},
+		eof:       make(chan int),
 	}
 
 	for _, o := range opts {
@@ -151,6 +153,10 @@ func (s *Stream) Stop() {
 	s.isStop = true
 }
 
+func (s *Stream) EndOfFile() <-chan int {
+	return s.eof
+}
+
 // Start starts the stream.
 // error ErrNoAudioInQueue might be returned
 func (s *Stream) Start() error {
@@ -170,6 +176,10 @@ func (s *Stream) Start() error {
 		if err != nil {
 			// we are done reading this audio file
 			if err == io.EOF {
+				select {
+				case s.eof <- len(s.queue):
+				case <-time.After(time.Millisecond * 100):
+				}
 				s.reading = nil
 				continue
 			}

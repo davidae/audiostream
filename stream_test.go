@@ -25,7 +25,7 @@ func TestStreamingWhenAudioQueueISEmpty(t *testing.T) {
 	}
 }
 
-func TestStreamingToTwoClientsWithNoMetadata(t *testing.T) {
+func TestStreamingToTwoListenersWithNoMetadata(t *testing.T) {
 	data := "123456789 101112131415161718192021222324252627"
 	s := icestream.NewStream(icestream.WithFramzeSize(2))
 	c1, err := icestream.NewListener()
@@ -71,13 +71,73 @@ func TestStreamingToTwoClientsWithNoMetadata(t *testing.T) {
 	if outc2 != data {
 		t.Errorf("expected client 2 to have streamed %q, but got %q", data, outc2)
 	}
+	t.Error("ok")
+}
+
+func TestStreamingToListenerWithMultipleFiles(t *testing.T) {
+	data := "123456789 101112131415161718192021222324252627"
+	s := icestream.NewStream(icestream.WithFramzeSize(2))
+	c1, err := icestream.NewListener()
+	noError(err, t)
+
+	s.AddListener(c1)
+	audio := &icestream.Audio{
+		Artist:     "Foo ft. Bar",
+		Title:      "Hello world",
+		Filename:   "song.mp3",
+		Data:       strings.NewReader(data),
+		SampleRate: 44100,
+	}
+
+	s.AppendAudio(audio)
+	s.AppendAudio(audio)
+	s.AppendAudio(audio)
+
+	go func() {
+		s.Start()
+	}()
+
+	go func() {
+		for {
+			q := <-s.EndOfFile()
+			if q != 2 {
+				t.Errorf("expected queue to be 2, got %d", q)
+			}
+			q = <-s.EndOfFile()
+			if q != 1 {
+				t.Errorf("expected queue to be 1, got %d", q)
+			}
+			q = <-s.EndOfFile()
+			if q != 0 {
+				t.Errorf("expected queue to be 0, got %d", q)
+			}
+		}
+	}()
+
+	var outc1 string
+	end := false
+	for {
+		select {
+		case msg := <-c1.Stream():
+			outc1 += string(msg)
+		case <-time.After(time.Second):
+			end = true
+		}
+		if end {
+			break
+		}
+	}
+
+	s.Stop()
+	if outc1 != data {
+		t.Errorf("expected client 1 to have streamed %q, but got %q", data, outc1)
+	}
 }
 
 func TestStreamingMetadataWithInterval(t *testing.T) {
 	data := "123456789 101112131415161718192021222324252627"
 	expectedStreamTitle := "Foo ft. Bar - Hello world"
 	s := icestream.NewStream(
-		icestream.WithShoutcastMetadata(10),
 		icestream.WithFramzeSize(len(data)),
 	)
 
@@ -107,7 +167,6 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 			s.AddListener(client)
 
 			endLoop := false
-			fmt.Println("loop started")
 			for !endLoop {
 				select {
 				case <-time.After(time.Second * 2):
