@@ -20,24 +20,23 @@ const (
 )
 
 var (
-	ErrNoAudioInQueue   = errors.New("no audio in stream queue")
+	// ErrNoAudioInQueue is an error stating that there are no more audio to stream in the queue
+	ErrNoAudioInQueue = errors.New("no audio in stream queue")
+	// ErrListenerNotFound is an error stating that a listener was not found amount active listener in a stream
 	ErrListenerNotFound = errors.New("listener not found amoung active listeners")
 )
 
-type StreamOpts func(s *Stream)
+// StreamOption is a func used to configure the streamer upon initialization
+type StreamOption func(s *Stream)
 
-func WithFramzeSize(size int) StreamOpts {
+// WithFramzeSize sets the frame size, which if the size of bytes used when reading a block of audio
+func WithFramzeSize(size int) StreamOption {
 	return func(s *Stream) { s.frameSize = size }
 }
 
-func WithShoutcastMetadata(interval uint64) StreamOpts {
-	return func(s *Stream) {
-		s.allowShoutcastMetadata = true
-		s.metadataInterval = interval
-	}
-}
-
-// a very rough estimation of the playtime of the frame
+// DefaultSleepForFunc is the default function one can use to estimate the time the streamer can
+// sleep after broadcast a frame to all the listeners. It is used in conjunction with WithLazyFileRead
+// The formula is a very rough estimation of the playtime of the frame
 func DefaultSleepForFunc() SleepFor {
 	return func(broadcastTime time.Duration, numBytes, sampleRate int) time.Duration {
 		playtime := time.Duration(float64(time.Millisecond) * (float64(numBytes) / float64(sampleRate)) * 1000)
@@ -45,13 +44,17 @@ func DefaultSleepForFunc() SleepFor {
 	}
 }
 
-func WithLazyFileRead(fn SleepFor) StreamOpts {
+// WithLazyFileRead is an option that will halt the stream from reading an audio file overzealously and
+// passing it on to the listeners. This can be useful if we want to keep the in-memory low and
+// avoid often empty queueus
+func WithLazyFileRead(fn SleepFor) StreamOption {
 	return func(s *Stream) {
 		s.lazyFileReading = true
 		s.fileReadSleepFn = fn
 	}
 }
 
+// Audio is a simple description of an audio item, it's data and metadata
 type Audio struct {
 	Data          io.Reader
 	SampleRate    int
@@ -59,13 +62,17 @@ type Audio struct {
 	Filename      string
 }
 
+// Read will read the audio data
 func (a *Audio) Read(b []byte) (int, error) { return a.Data.Read(b) }
 
+// Frame is a simple abstraction of what a stream will send to its listeners
 type Frame struct {
 	data          []byte
 	title, artist string
 }
 
+// ShoutcastMetadata will build a frame to send metadata to a client that can
+// decode/parse ShoutCast metadata as a part of the audio stream from a listener
 func (f Frame) ShoutcastMetadata() []byte {
 	meta := fmt.Sprintf("StreamTitle='%v - %v';", f.artist, f.title)
 
@@ -86,11 +93,9 @@ func (f Frame) ShoutcastMetadata() []byte {
 type SleepFor func(broadcastTime time.Duration, numBytes, sampleRate int) time.Duration
 
 type Stream struct {
-	frameSize              int
-	allowShoutcastMetadata bool
-	metadataInterval       uint64
-	lazyFileReading        bool
-	fileReadSleepFn        SleepFor
+	frameSize       int
+	lazyFileReading bool
+	fileReadSleepFn SleepFor
 
 	audioMux, clientMux *sync.Mutex
 	listeners           map[string]*Listener
@@ -99,7 +104,7 @@ type Stream struct {
 	isStop              bool
 }
 
-func NewStream(opts ...StreamOpts) *Stream {
+func NewStream(opts ...StreamOption) *Stream {
 	s := &Stream{
 		audioMux:  &sync.Mutex{},
 		clientMux: &sync.Mutex{},
@@ -113,10 +118,6 @@ func NewStream(opts ...StreamOpts) *Stream {
 
 	if s.frameSize == 0 {
 		s.frameSize = defaultFrameSize
-	}
-
-	if s.metadataInterval == 0 {
-		s.metadataInterval = defaultMetadataInterval
 	}
 
 	return s
