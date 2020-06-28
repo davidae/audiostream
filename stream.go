@@ -132,12 +132,16 @@ func (s *Stream) Append(a *Audio) {
 
 func (s *Stream) Stop() {
 	s.isStop = true
+	for _, c := range s.listeners {
+		s.Deregister(c)
+	}
+
 	s.listeners = make(map[string]*Client)
 }
 
 // Start starts the stream.
 // error ErrNoAudioInQueue might be returned
-func (s *Stream) Start(handleTimeout func(c *Client)) error {
+func (s *Stream) Start() error {
 	for !s.isStop {
 		// are we done reading/playing a song?
 		if s.reading == nil {
@@ -160,8 +164,6 @@ func (s *Stream) Start(handleTimeout func(c *Client)) error {
 			return err
 		}
 
-		timedOut := []*Client{}
-
 		s.clientMux.Lock()
 		// send frame to all clients
 		start := time.Now()
@@ -169,22 +171,12 @@ func (s *Stream) Start(handleTimeout func(c *Client)) error {
 		wg.Add(len(s.listeners))
 		for _, c := range s.listeners {
 			go func(c *Client) {
-				select {
-				case c.frame <- Frame{data: frame, artist: s.reading.Artist, title: s.reading.Title}:
-				case <-time.After(s.clientTimeout):
-					timedOut = append(timedOut, c)
-				}
+				c.frame <- Frame{data: frame, artist: s.reading.Artist, title: s.reading.Title}
 				wg.Done()
 			}(c)
 		}
 		wg.Wait()
 		s.clientMux.Unlock()
-
-		for _, c := range timedOut {
-			// handle timed out client here instead of inside s.clientMux lock
-			// to avoid any potential race confliects.
-			handleTimeout(c)
-		}
 
 		finish := time.Now().Sub(start)
 		// a very rough estimation of the playtime of the frame
@@ -209,7 +201,6 @@ func (s *Stream) Register(opts ...RegisterOpts) (*Client, error) {
 		frame:            make(chan Frame),
 		stop:             make(chan struct{}),
 		headers:          make(map[string]string),
-		isAlive:          true,
 		metadataInterval: s.metadataInterval,
 	}
 
@@ -229,17 +220,19 @@ func (s *Stream) Register(opts ...RegisterOpts) (*Client, error) {
 	return c, nil
 }
 
-func (s *Stream) Deregister(clients ...*Client) {
-	for _, c := range clients {
-		s.clientMux.Lock()
-		delete(s.listeners, c.uuid)
-		c.isAlive = false
-		c.stop <- struct{}{}
-		close(c.stop)
-		close(c.frame)
-		close(c.stream)
-		s.clientMux.Unlock()
+var ErrClientNotFound = errors.New("client not found amoung active listeners")
+
+func (s *Stream) Deregister(c *Client) error {
+	s.clientMux.Lock()
+	defer s.clientMux.Unlock()
+	if _, ok := s.listeners[c.uuid]; !ok {
+		return ErrClientNotFound
 	}
+	delete(s.listeners, c.uuid)
+	close(c.stop)
+	close(c.frame)
+	close(c.stream)
+	return nil
 }
 
 func (s *Stream) dequeue() (*Audio, error) {
