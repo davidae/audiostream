@@ -23,7 +23,7 @@ var (
 	// ErrNoAudioInQueue is an error stating that there are no more audio to stream in the queue
 	ErrNoAudioInQueue = errors.New("no audio in stream queue")
 	// ErrListenerNotFound is an error stating that a listener was not found amount active listener in a stream
-	ErrListenerNotFound = errors.New("listener not found amoung active listeners")
+	ErrListenerNotFound = errors.New("listener not found among active listeners")
 )
 
 // StreamOption is a func used to configure the streamer upon initialization
@@ -128,7 +128,7 @@ func NewStream(opts ...StreamOption) *Stream {
 	return s
 }
 
-// AppendAudio adds an audio file to the stream to be read and broadcasted to listeners
+// AppendAudio adds an audio file to the stream to be read and broadcast to listeners
 func (s *Stream) AppendAudio(a *Audio) {
 	s.audioMux.Lock()
 	s.queue = append(s.queue, a)
@@ -162,7 +162,7 @@ func (s *Stream) Stop() {
 }
 
 // EndOfFile sends the number of Audio items in the queue after an audio file
-// has been dropped dropped from the queue, and read and brodcasted all the data
+// has been dropped dropped from the queue, and read and brodcast all the data
 // completely (EOF) to the listeners.
 // This can be useful you want to reduce the number of files held in the queue
 func (s *Stream) EndOfFile() <-chan int {
