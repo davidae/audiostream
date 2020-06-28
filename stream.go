@@ -148,11 +148,6 @@ func (s *Stream) RemoveListener(l *Listener) error {
 
 func (s *Stream) Stop() {
 	s.isStop = true
-	for _, l := range s.listeners {
-		s.RemoveListener(l)
-	}
-
-	s.listeners = make(map[string]*Listener)
 }
 
 // Start starts the stream.
