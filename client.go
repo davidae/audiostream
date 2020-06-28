@@ -9,6 +9,8 @@ import (
 type Client struct {
 	uuid          string
 	frame, stream chan []byte
+	stop          chan struct{}
+	isAlive       bool
 
 	framesWritten            uint64
 	supportShoutCastMetadata bool
@@ -21,14 +23,24 @@ func (c Client) SetHeaders(r *http.Request) {
 	}
 }
 
+func (c Client) IsAlive() bool {
+	return c.isAlive
+}
+
 func (c *Client) Stream() <-chan []byte {
 	go func() {
 		for {
-			frame := <-c.frame
-			c.framesWritten += uint64(len(frame))
-			c.stream <- frame
+			select {
+			case frame := <-c.frame:
+				c.framesWritten += uint64(len(frame))
+				c.stream <- frame
+			case <-c.stop:
+				return
+			}
+
 		}
 	}()
+
 	return c.stream
 }
 
@@ -50,6 +62,7 @@ func (s *Stream) Register(opts ...RegisterOpts) (*Client, error) {
 		stream:  make(chan []byte),
 		frame:   make(chan []byte),
 		headers: make(map[string]string),
+		isAlive: true,
 	}
 
 	for _, o := range opts {
@@ -64,4 +77,14 @@ func (s *Stream) Register(opts ...RegisterOpts) (*Client, error) {
 
 	s.listeners[uuid.String()] = c
 	return c, nil
+}
+
+func (s *Stream) Deregister(c *Client) {
+	s.clientMux.Lock()
+	defer s.clientMux.Unlock()
+	delete(s.listeners, c.uuid)
+	c.isAlive = false
+	c.stop <- struct{}{}
+	close(c.frame)
+	close(c.stream)
 }

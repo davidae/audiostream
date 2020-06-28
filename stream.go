@@ -8,22 +8,29 @@ import (
 )
 
 const (
+	defaultClientTimeout    = time.Millisecond * 500
 	defaultFrameSize        = 3000
 	defaultMetadataInterval = 65536
 )
 
+var ErrNoAudioInQueue = errors.New("no audio in stream queue")
+
 type StreamOpts func(s *Stream)
+
+func WithClientTimeout(d time.Duration) StreamOpts {
+	return func(s *Stream) { s.clientTimeout = d }
+}
 
 func WithFramzeSize(size int) StreamOpts {
 	return func(s *Stream) { s.frameSize = size }
 }
 
-func WithForceSampleRate(r int) StreamOpts {
-	return func(s *Stream) { s.sampleRate = r }
-}
-
 func WithShoutcastMetadata() StreamOpts {
 	return func(s *Stream) { s.allowShoutcastMetadata = true }
+}
+
+func WithLazyFileRead() StreamOpts {
+	return func(s *Stream) { s.lazyFileReading = true }
 }
 
 func WithMetadataInterval(interval int64) StreamOpts {
@@ -37,13 +44,26 @@ type Audio struct {
 	Filename      string
 }
 
-func (a *Audio) Read(b []byte) (int, error) {
-	return a.Data.Read(b)
+func (a *Audio) Read(b []byte) (int, error) { return a.Data.Read(b) }
+
+type Stream struct {
+	frameSize              int
+	allowShoutcastMetadata bool
+	metadataInterval       int64
+	lazyFileReading        bool
+	clientTimeout          time.Duration
+
+	audioMux, clientMux *sync.Mutex
+	listeners           map[string]*Client
+	queue               []*Audio
+	reading             *Audio
+	isStop              bool
 }
 
 func NewStream(opts ...StreamOpts) *Stream {
 	s := &Stream{
-		sync:      &sync.Mutex{},
+		audioMux:  &sync.Mutex{},
+		clientMux: &sync.Mutex{},
 		listeners: make(map[string]*Client),
 		queue:     []*Audio{},
 	}
@@ -60,57 +80,31 @@ func NewStream(opts ...StreamOpts) *Stream {
 		s.metadataInterval = defaultMetadataInterval
 	}
 
+	if s.clientTimeout == 0 {
+		s.clientTimeout = defaultClientTimeout
+	}
+
 	return s
 }
 
-type Stream struct {
-	frameSize              int
-	sampleRate             int
-	allowShoutcastMetadata bool
-	blockOnNoAudio         bool
-	metadataInterval       int64
-
-	sync          *sync.Mutex
-	clientTimeout chan *Client
-	listeners     map[string]*Client
-	queue         []*Audio
-	reading       *Audio
-	playing       *Audio
-}
-
 func (s *Stream) Append(a *Audio) {
-	s.sync.Lock()
+	s.audioMux.Lock()
 	s.queue = append(s.queue, a)
-	s.sync.Unlock()
+	s.audioMux.Unlock()
 }
 
-func (s *Stream) Deregister(c Client) {
-	delete(s.listeners, c.uuid)
+func (s *Stream) Stop() {
+	s.isStop = true
 }
 
-func (s *Stream) nextAudio() (*Audio, error) {
-	s.sync.Lock()
-	defer s.sync.Unlock()
-	if len(s.queue) == 0 {
-		return nil, ErrNoAudioInQueue
-	}
-
-	a := s.queue[0]
-	s.queue = s.queue[1:]
-	return a, nil
-}
-
-var ErrNoAudioInQueue = errors.New("no audio in stream queue")
-
-func (s *Stream) Start(clientTimeout time.Duration, timeoutCh chan<- *Client) error {
-	for {
+// Start starts the stream.
+// error ErrNoAudioInQueue might be returned
+func (s *Stream) Start(handleTimeout func(c *Client)) error {
+	for s.isStop {
 		// are we done reading/playing a song?
 		if s.reading == nil {
-			reading, err := s.nextAudio()
+			reading, err := s.dequeue()
 			if err != nil {
-				if err == ErrNoAudioInQueue {
-					continue
-				}
 				return err
 			}
 			s.reading = reading
@@ -128,9 +122,9 @@ func (s *Stream) Start(clientTimeout time.Duration, timeoutCh chan<- *Client) er
 			return err
 		}
 
-		// a very rough estimation of the playtime of the frame
-		framePlaytime := time.Duration(float64(time.Millisecond) * (float64(bytes) / float64(s.sampleRate)) * 1000)
+		timedOut := []*Client{}
 
+		s.clientMux.Lock()
 		// send frame to all clients
 		start := time.Now()
 		var wg sync.WaitGroup
@@ -139,18 +133,41 @@ func (s *Stream) Start(clientTimeout time.Duration, timeoutCh chan<- *Client) er
 			go func(c *Client) {
 				select {
 				case c.frame <- frame:
-				case <-time.After(time.Second):
-					timeoutCh <- c
+				case <-time.After(s.clientTimeout):
+					timedOut = append(timedOut, c)
 				}
 				wg.Done()
 			}(c)
 		}
 		wg.Wait()
+		s.clientMux.Unlock()
+
+		for _, c := range timedOut {
+			// handle timed out client here instead of inside s.clientMux lock
+			// to avoid any potential race confliects.
+			handleTimeout(c)
+		}
 
 		finish := time.Now().Sub(start)
+		// a very rough estimation of the playtime of the frame
+		framePlaytime := time.Duration(float64(time.Millisecond) * (float64(bytes) / float64(s.reading.SampleRate)) * 1000)
 		sleep := framePlaytime - finish
-		if sleep > 0 {
+		if sleep > 0 && s.lazyFileReading {
 			time.Sleep(sleep)
 		}
 	}
+
+	return nil
+}
+
+func (s *Stream) dequeue() (*Audio, error) {
+	s.audioMux.Lock()
+	defer s.audioMux.Unlock()
+	if len(s.queue) == 0 {
+		return nil, ErrNoAudioInQueue
+	}
+
+	a := s.queue[0]
+	s.queue = s.queue[1:]
+	return a, nil
 }
