@@ -18,8 +18,8 @@ func TestStreamingWhenAudioQueueISEmpty(t *testing.T) {
 }
 
 func TestStreamingToTwoClientsWithNoMetadata(t *testing.T) {
-	data := "1234567891011121314151617181920"
-	s := icestream.NewStream(icestream.WithFramzeSize(len(data)))
+	data := "123456789 101112131415161718192021222324252627"
+	s := icestream.NewStream(icestream.WithFramzeSize(2))
 	c1, err := s.Register()
 	noError(err, t)
 	c2, err := s.Register()

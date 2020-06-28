@@ -2,7 +2,9 @@ package icestream
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"sync"
 	"time"
 
@@ -13,6 +15,10 @@ const (
 	defaultClientTimeout    = time.Millisecond * 500
 	defaultFrameSize        = 3000
 	defaultMetadataInterval = 65536
+
+	// MaxMetaDataSize is the maximum size for meta data (everything over is truncated)
+	// Must be a multiple of 16 which fits into one byte. Maximum: 16 * 255 = 4080
+	MaxMetaDataSize = 4080
 )
 
 var ErrNoAudioInQueue = errors.New("no audio in stream queue")
@@ -27,23 +33,22 @@ func WithFramzeSize(size int) StreamOpts {
 	return func(s *Stream) { s.frameSize = size }
 }
 
-func WithShoutcastMetadata() StreamOpts {
-	return func(s *Stream) { s.allowShoutcastMetadata = true }
+func WithShoutcastMetadata(interval uint64) StreamOpts {
+	return func(s *Stream) {
+		s.allowShoutcastMetadata = true
+		s.metadataInterval = interval
+	}
 }
 
 func WithLazyFileRead() StreamOpts {
 	return func(s *Stream) { s.lazyFileReading = true }
 }
 
-func WithMetadataInterval(interval uint64) StreamOpts {
-	return func(s *Stream) { s.metadataInterval = interval }
-}
-
 type RegisterOpts func(*Client)
 
 // SupportsShoutCastMetadata is usually confirmed when checking the incoming
 // request header icy-metadata: 1
-func SupportsShoutCastMetadata() RegisterOpts {
+func WithSupportsShoutCastMetadata() RegisterOpts {
 	return func(c *Client) { c.supportShoutCastMetadata = true }
 }
 
@@ -55,6 +60,28 @@ type Audio struct {
 }
 
 func (a *Audio) Read(b []byte) (int, error) { return a.Data.Read(b) }
+
+type Frame struct {
+	data          []byte
+	title, artist string
+}
+
+func (f Frame) ShoutcastMetadata() []byte {
+	meta := fmt.Sprintf("StreamTitle='%v - %v';", f.artist, f.title)
+
+	// is it above max size?
+	if len(meta) > MaxMetaDataSize {
+		meta = meta[:MaxMetaDataSize-2] + "';"
+	}
+
+	// Calculate the meta data frame size as a multiple of 16
+	frameSize := byte(math.Ceil(float64(len(meta)) / 16.0))
+
+	metadata := make([]byte, 16.0*frameSize+1, 16.0*frameSize+1)
+	metadata[0] = frameSize
+	copy(metadata[1:], meta)
+	return metadata
+}
 
 type Stream struct {
 	frameSize              int
@@ -143,7 +170,7 @@ func (s *Stream) Start(handleTimeout func(c *Client)) error {
 		for _, c := range s.listeners {
 			go func(c *Client) {
 				select {
-				case c.frame <- frame:
+				case c.frame <- Frame{data: frame, artist: s.reading.Artist, title: s.reading.Title}:
 				case <-time.After(s.clientTimeout):
 					timedOut = append(timedOut, c)
 				}
@@ -179,7 +206,7 @@ func (s *Stream) Register(opts ...RegisterOpts) (*Client, error) {
 	c := &Client{
 		uuid:             uuid.String(),
 		stream:           make(chan []byte),
-		frame:            make(chan []byte),
+		frame:            make(chan Frame),
 		stop:             make(chan struct{}),
 		headers:          make(map[string]string),
 		isAlive:          true,
