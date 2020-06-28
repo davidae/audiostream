@@ -37,8 +37,19 @@ func WithShoutcastMetadata(interval uint64) StreamOpts {
 	}
 }
 
-func WithLazyFileRead() StreamOpts {
-	return func(s *Stream) { s.lazyFileReading = true }
+// a very rough estimation of the playtime of the frame
+func DefaultSleepForFunc() SleepFor {
+	return func(broadcastTime time.Duration, numBytes, sampleRate int) time.Duration {
+		playtime := time.Duration(float64(time.Millisecond) * (float64(numBytes) / float64(sampleRate)) * 1000)
+		return playtime - broadcastTime
+	}
+}
+
+func WithLazyFileRead(fn SleepFor) StreamOpts {
+	return func(s *Stream) {
+		s.lazyFileReading = true
+		s.fileReadSleepFn = fn
+	}
 }
 
 type Audio struct {
@@ -72,11 +83,14 @@ func (f Frame) ShoutcastMetadata() []byte {
 	return metadata
 }
 
+type SleepFor func(broadcastTime time.Duration, numBytes, sampleRate int) time.Duration
+
 type Stream struct {
 	frameSize              int
 	allowShoutcastMetadata bool
 	metadataInterval       uint64
 	lazyFileReading        bool
+	fileReadSleepFn        SleepFor
 
 	audioMux, clientMux *sync.Mutex
 	listeners           map[string]*Listener
@@ -182,11 +196,8 @@ func (s *Stream) Start() error {
 		s.clientMux.Unlock()
 
 		finish := time.Now().Sub(start)
-		// a very rough estimation of the playtime of the frame
-		framePlaytime := time.Duration(float64(time.Millisecond) * (float64(bytes) / float64(s.reading.SampleRate)) * 1000)
-		sleep := framePlaytime - finish
-		if sleep > 0 && s.lazyFileReading {
-			time.Sleep(sleep)
+		if s.lazyFileReading && s.fileReadSleepFn != nil {
+			time.Sleep(s.fileReadSleepFn(finish, bytes, s.reading.SampleRate))
 		}
 	}
 

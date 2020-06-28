@@ -35,10 +35,11 @@ func TestStreamingToTwoClientsWithNoMetadata(t *testing.T) {
 	s.AddListener(c1, c2)
 
 	s.AppendAudio(&icestream.Audio{
-		Artist:   "Foo ft. Bar",
-		Title:    "Hello world",
-		Filename: "song.mp3",
-		Data:     strings.NewReader(data),
+		Artist:     "Foo ft. Bar",
+		Title:      "Hello world",
+		Filename:   "song.mp3",
+		Data:       strings.NewReader(data),
+		SampleRate: 44100,
 	})
 
 	go func() {
@@ -88,6 +89,11 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 
 	ts := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				panic(errors.New("need a flusher for keep alive"))
+			}
+
 			w.Header().Set("Connection", "Keep-Alive")
 			w.Header().Set("Transfer-Encoding", "chunked")
 			w.Header().Set("Content-Type", "audio/mpeg")
@@ -100,14 +106,19 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 			s.AddListener(client)
 
 			endLoop := false
+			fmt.Println("loop started")
 			for !endLoop {
 				select {
 				case <-time.After(time.Second * 2):
 					endLoop = true
 				case out := <-client.Stream():
+					fmt.Println("get some, data writing")
 					binary.Write(w, binary.BigEndian, out)
+					flusher.Flush()
+					fmt.Println("done writing the data")
 				}
 			}
+			fmt.Println("remove listener")
 			s.RemoveListener(client)
 		}))
 
@@ -128,7 +139,8 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 		s.Start()
 	}()
 
-	time.Sleep(time.Second * 3)
+	time.Sleep(time.Second)
+	s.Stop()
 }
 
 // BORROWED FROM https://gist.github.com/jucrouzet/3e59877c0b4352966e6220034f2b84ac
