@@ -18,29 +18,40 @@ See how to use the audiostream together with an HTTP server in [examples/main.go
 
 A small example here,
 ```go
-lazyFileRead := audiostream.WithFramzeSize(2)
-stream := audiostream.NewStream(lazyFileRead)
+package main
 
-stream.AppendAudio(&audiostream.Audio{
-	Data:       strings.NewReader("thisIsForSureNotAProperAudioFileThough"),
-	Artist:     "Fizz",
-	Title:      "Buzz",
-	Filename:   "your-mp3-file.mp3",
-	SampleRate: 44100,
-})
+import (
+	"fmt"
+	"strings"
 
-listener, err := audiostream.NewListener()
-if err != nil {
-	panic(err)
-}
-stream.AddListener(listener)
+	"github.com/davidae/audiostream"
+)
 
-go func() {
-	for {
-		fmt.Printf("listener: %s\n", <-listener.Stream())
+func main() {
+	lazyFileRead := audiostream.WithFramzeSize(2)
+	stream := audiostream.NewStream(lazyFileRead)
+
+	stream.AppendAudio(&audiostream.Audio{
+		Data:       strings.NewReader("thisIsForSureNotAProperAudioFileThough"),
+		Artist:     "Fizz",
+		Title:      "Buzz",
+		Filename:   "your-mp3-file.mp3",
+		SampleRate: 44100,
+	})
+
+	listener, err := audiostream.NewListener()
+	if err != nil {
+		panic(err)
 	}
-}()
-stream.Start()
+	stream.AddListener(listener)
+
+	go func() {
+		for {
+			fmt.Printf("listener: %s\n", <-listener.Stream())
+		}
+	}()
+	stream.Start()
+}
 ```
 
 # Inspiration
