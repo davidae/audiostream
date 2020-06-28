@@ -46,6 +46,7 @@ func main() {
 		for !endLoop {
 			select {
 			case <-time.After(time.Second * 2):
+				// client timed out
 				endLoop = true
 			case out := <-listener.Stream():
 				binary.Write(w, binary.BigEndian, out)
