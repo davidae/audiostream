@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -111,14 +112,15 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 				select {
 				case <-time.After(time.Second * 2):
 					endLoop = true
-				case out := <-client.Stream():
-					fmt.Println("get some, data writing")
+				case out, ok := <-client.Stream():
+					if !ok {
+						endLoop = true
+						break
+					}
 					binary.Write(w, binary.BigEndian, out)
 					flusher.Flush()
-					fmt.Println("done writing the data")
 				}
 			}
-			fmt.Println("remove listener")
 			s.RemoveListener(client)
 		}))
 

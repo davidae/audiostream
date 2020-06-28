@@ -8,7 +8,6 @@ type Listener struct {
 	uuid             string
 	frame            chan Frame
 	stream           chan []byte
-	stop             chan struct{}
 	startedToStream  bool
 	metadataInterval int64
 
@@ -36,7 +35,6 @@ func NewListener(opts ...ListenerOptions) (*Listener, error) {
 		uuid:   uuid.String(),
 		stream: make(chan []byte),
 		frame:  make(chan Frame),
-		stop:   make(chan struct{}),
 	}
 
 	for _, o := range opts {

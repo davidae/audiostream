@@ -141,7 +141,6 @@ func (s *Stream) RemoveListener(l *Listener) error {
 		return ErrListenerNotFound
 	}
 	delete(s.listeners, l.uuid)
-	close(l.stop)
 	close(l.frame)
 	close(l.stream)
 	return nil
