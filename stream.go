@@ -7,12 +7,10 @@ import (
 	"math"
 	"sync"
 	"time"
-
-	"github.com/gofrs/uuid"
 )
 
 const (
-	defaultClientTimeout    = time.Millisecond * 500
+	defaultListenerTimeout  = time.Millisecond * 500
 	defaultFrameSize        = 3000
 	defaultMetadataInterval = 65536
 
@@ -21,13 +19,12 @@ const (
 	MaxMetaDataSize = 4080
 )
 
-var ErrNoAudioInQueue = errors.New("no audio in stream queue")
+var (
+	ErrNoAudioInQueue   = errors.New("no audio in stream queue")
+	ErrListenerNotFound = errors.New("listener not found amoung active listeners")
+)
 
 type StreamOpts func(s *Stream)
-
-func WithClientTimeout(d time.Duration) StreamOpts {
-	return func(s *Stream) { s.clientTimeout = d }
-}
 
 func WithFramzeSize(size int) StreamOpts {
 	return func(s *Stream) { s.frameSize = size }
@@ -42,14 +39,6 @@ func WithShoutcastMetadata(interval uint64) StreamOpts {
 
 func WithLazyFileRead() StreamOpts {
 	return func(s *Stream) { s.lazyFileReading = true }
-}
-
-type RegisterOpts func(*Client)
-
-// SupportsShoutCastMetadata is usually confirmed when checking the incoming
-// request header icy-metadata: 1
-func WithSupportsShoutCastMetadata() RegisterOpts {
-	return func(c *Client) { c.supportShoutCastMetadata = true }
 }
 
 type Audio struct {
@@ -88,10 +77,9 @@ type Stream struct {
 	allowShoutcastMetadata bool
 	metadataInterval       uint64
 	lazyFileReading        bool
-	clientTimeout          time.Duration
 
 	audioMux, clientMux *sync.Mutex
-	listeners           map[string]*Client
+	listeners           map[string]*Listener
 	queue               []*Audio
 	reading             *Audio
 	isStop              bool
@@ -101,7 +89,7 @@ func NewStream(opts ...StreamOpts) *Stream {
 	s := &Stream{
 		audioMux:  &sync.Mutex{},
 		clientMux: &sync.Mutex{},
-		listeners: make(map[string]*Client),
+		listeners: make(map[string]*Listener),
 		queue:     []*Audio{},
 	}
 
@@ -117,26 +105,41 @@ func NewStream(opts ...StreamOpts) *Stream {
 		s.metadataInterval = defaultMetadataInterval
 	}
 
-	if s.clientTimeout == 0 {
-		s.clientTimeout = defaultClientTimeout
-	}
-
 	return s
 }
 
-func (s *Stream) Append(a *Audio) {
+func (s *Stream) AppendAudio(a *Audio) {
 	s.audioMux.Lock()
 	s.queue = append(s.queue, a)
 	s.audioMux.Unlock()
 }
 
+func (s *Stream) AddListener(ls ...*Listener) {
+	for _, l := range ls {
+		s.listeners[l.uuid] = l
+	}
+}
+
+func (s *Stream) RemoveListener(l *Listener) error {
+	s.clientMux.Lock()
+	defer s.clientMux.Unlock()
+	if _, ok := s.listeners[l.uuid]; !ok {
+		return ErrListenerNotFound
+	}
+	delete(s.listeners, l.uuid)
+	close(l.stop)
+	close(l.frame)
+	close(l.stream)
+	return nil
+}
+
 func (s *Stream) Stop() {
 	s.isStop = true
-	for _, c := range s.listeners {
-		s.Deregister(c)
+	for _, l := range s.listeners {
+		s.RemoveListener(l)
 	}
 
-	s.listeners = make(map[string]*Client)
+	s.listeners = make(map[string]*Listener)
 }
 
 // Start starts the stream.
@@ -169,11 +172,11 @@ func (s *Stream) Start() error {
 		start := time.Now()
 		var wg sync.WaitGroup
 		wg.Add(len(s.listeners))
-		for _, c := range s.listeners {
-			go func(c *Client) {
-				c.frame <- Frame{data: frame, artist: s.reading.Artist, title: s.reading.Title}
+		for _, l := range s.listeners {
+			go func(l *Listener) {
+				l.frame <- Frame{data: frame, artist: s.reading.Artist, title: s.reading.Title}
 				wg.Done()
-			}(c)
+			}(l)
 		}
 		wg.Wait()
 		s.clientMux.Unlock()
@@ -187,51 +190,6 @@ func (s *Stream) Start() error {
 		}
 	}
 
-	return nil
-}
-
-func (s *Stream) Register(opts ...RegisterOpts) (*Client, error) {
-	uuid, err := uuid.NewV4()
-	if err != nil {
-		return nil, err
-	}
-	c := &Client{
-		uuid:             uuid.String(),
-		stream:           make(chan []byte),
-		frame:            make(chan Frame),
-		stop:             make(chan struct{}),
-		headers:          make(map[string]string),
-		metadataInterval: s.metadataInterval,
-	}
-
-	for _, o := range opts {
-		o(c)
-	}
-
-	if c.supportShoutCastMetadata && s.allowShoutcastMetadata {
-		c.headers["icy-name"] = "hello world"
-		c.headers["icy-metadata"] = "1"
-		c.headers["icy-metaint"] = "1"
-
-		c.writeMetadata = true
-	}
-
-	s.listeners[uuid.String()] = c
-	return c, nil
-}
-
-var ErrClientNotFound = errors.New("client not found amoung active listeners")
-
-func (s *Stream) Deregister(c *Client) error {
-	s.clientMux.Lock()
-	defer s.clientMux.Unlock()
-	if _, ok := s.listeners[c.uuid]; !ok {
-		return ErrClientNotFound
-	}
-	delete(s.listeners, c.uuid)
-	close(c.stop)
-	close(c.frame)
-	close(c.stream)
 	return nil
 }
 

@@ -27,12 +27,14 @@ func TestStreamingWhenAudioQueueISEmpty(t *testing.T) {
 func TestStreamingToTwoClientsWithNoMetadata(t *testing.T) {
 	data := "123456789 101112131415161718192021222324252627"
 	s := icestream.NewStream(icestream.WithFramzeSize(2))
-	c1, err := s.Register()
+	c1, err := icestream.NewListener()
 	noError(err, t)
-	c2, err := s.Register()
+	c2, err := icestream.NewListener()
 	noError(err, t)
 
-	s.Append(&icestream.Audio{
+	s.AddListener(c1, c2)
+
+	s.AppendAudio(&icestream.Audio{
 		Artist:   "Foo ft. Bar",
 		Title:    "Hello world",
 		Filename: "song.mp3",
@@ -77,7 +79,7 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 		icestream.WithFramzeSize(len(data)),
 	)
 
-	s.Append(&icestream.Audio{
+	s.AppendAudio(&icestream.Audio{
 		Artist:   "Foo ft. Bar",
 		Title:    "Hello world",
 		Filename: "song.mp3",
@@ -89,10 +91,13 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 			w.Header().Set("Connection", "Keep-Alive")
 			w.Header().Set("Transfer-Encoding", "chunked")
 			w.Header().Set("Content-Type", "audio/mpeg")
+			w.Header().Set("icy-metadata", "1")
 			w.Header().Set("icy-metaint", "10")
+			w.Header().Set("icy-name", "hello world")
 
-			client, err := s.Register(icestream.WithSupportsShoutCastMetadata())
+			client, err := icestream.NewListener(icestream.WithMetadataSupport(10))
 			noError(err, t)
+			s.AddListener(client)
 
 			endLoop := false
 			for !endLoop {
@@ -103,7 +108,7 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 					binary.Write(w, binary.BigEndian, out)
 				}
 			}
-			s.Deregister(client)
+			s.RemoveListener(client)
 		}))
 
 	defer ts.Close()
