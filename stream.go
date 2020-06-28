@@ -90,8 +90,10 @@ func (f Frame) ShoutcastMetadata() []byte {
 	return metadata
 }
 
+// SleepFor is a function used to determine how much to sleep when using lazy read
 type SleepFor func(broadcastTime time.Duration, numBytes, sampleRate int) time.Duration
 
+// Stream is responsible for reading and broadcasting to the data to listeners
 type Stream struct {
 	frameSize       int
 	lazyFileReading bool
@@ -105,6 +107,7 @@ type Stream struct {
 	isStop              bool
 }
 
+// NewStream initiates and returns a Stream
 func NewStream(opts ...StreamOption) *Stream {
 	s := &Stream{
 		audioMux:  &sync.Mutex{},
@@ -125,18 +128,21 @@ func NewStream(opts ...StreamOption) *Stream {
 	return s
 }
 
+// AppendAudio adds an audio file to the stream to be read and broadcasted to listeners
 func (s *Stream) AppendAudio(a *Audio) {
 	s.audioMux.Lock()
 	s.queue = append(s.queue, a)
 	s.audioMux.Unlock()
 }
 
+// AddListener adds a new listener to the stream to broadcast audio data
 func (s *Stream) AddListener(ls ...*Listener) {
 	for _, l := range ls {
 		s.listeners[l.uuid] = l
 	}
 }
 
+// RemoveListener removes a listener from a stream
 func (s *Stream) RemoveListener(l *Listener) error {
 	s.clientMux.Lock()
 	defer s.clientMux.Unlock()
@@ -149,10 +155,16 @@ func (s *Stream) RemoveListener(l *Listener) error {
 	return nil
 }
 
+// Stop stops the broadcasting initiated by Start()
+// You cannot re Start() a stream. This function is maybe a bit useless.
 func (s *Stream) Stop() {
 	s.isStop = true
 }
 
+// EndOfFile sends the number of Audio items in the queue after an audio file
+// has been dropped dropped from the queue, and read and brodcasted all the data
+// completely (EOF) to the listeners.
+// This can be useful you want to reduce the number of files held in the queue
 func (s *Stream) EndOfFile() <-chan int {
 	return s.eof
 }

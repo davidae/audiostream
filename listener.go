@@ -14,18 +14,20 @@ type Listener struct {
 	supportMetadata bool
 }
 
-type ListenerOptions func(*Listener)
+// ListenerOption is a func used to configure the listener upon initialization
+type ListenerOption func(*Listener)
 
 // WithMetadataSupport is usually confirmed when checking the incoming
 // request header icy-metadata: 1
-func WithMetadataSupport(interval int64) ListenerOptions {
+func WithMetadataSupport(interval int64) ListenerOption {
 	return func(l *Listener) {
 		l.supportMetadata = true
 		l.metadataInterval = interval
 	}
 }
 
-func NewListener(opts ...ListenerOptions) (*Listener, error) {
+// NewListener initializes and return a Listener
+func NewListener(opts ...ListenerOption) (*Listener, error) {
 	uuid, err := uuid.NewV4()
 	if err != nil {
 		return nil, err
@@ -44,6 +46,7 @@ func NewListener(opts ...ListenerOptions) (*Listener, error) {
 	return l, nil
 }
 
+// Stream returns a channel that sends audio from the stream
 func (l *Listener) Stream() <-chan []byte {
 	if l.startedToStream {
 		return l.stream
