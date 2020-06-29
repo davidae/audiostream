@@ -4,9 +4,10 @@ import (
 	"github.com/gofrs/uuid"
 )
 
+// Listener is a client used to listen to the stream of audio
 type Listener struct {
 	uuid             string
-	frame            chan Frame
+	frame            chan frame
 	stream           chan []byte
 	startedToStream  bool
 	metadataInterval int64
@@ -36,7 +37,7 @@ func NewListener(opts ...ListenerOption) (*Listener, error) {
 	l := &Listener{
 		uuid:   uuid.String(),
 		stream: make(chan []byte),
-		frame:  make(chan Frame),
+		frame:  make(chan frame),
 	}
 
 	for _, o := range opts {

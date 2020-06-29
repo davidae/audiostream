@@ -10,7 +10,6 @@ import (
 )
 
 const (
-	defaultListenerTimeout  = time.Millisecond * 500
 	defaultFrameSize        = 3000
 	defaultMetadataInterval = 65536
 
@@ -29,7 +28,8 @@ var (
 // StreamOption is a func used to configure the streamer upon initialization
 type StreamOption func(s *Stream)
 
-// WithFramzeSize sets the frame size, which if the size of bytes used when reading a block of audio
+// WithFramzeSize sets the frame size, which if the size of bytes used when reading a block of audio.
+// The default frame size is 3000
 func WithFramzeSize(size int) StreamOption {
 	return func(s *Stream) { s.frameSize = size }
 }
@@ -45,8 +45,9 @@ func DefaultSleepForFunc() SleepFor {
 }
 
 // WithLazyFileRead is an option that will halt the stream from reading an audio file overzealously and
-// passing it on to the listeners. This can be useful if we want to keep the in-memory low and
-// avoid often empty queueus
+// passing it on to the listeners. This can be useful if we want to keep the in-memory low,
+// provide a "now playing" functionality without using the `ICY protocol` (be in sync with what the client is reading),
+// avoid overflowing the buffer reading the stream (f.ex. an HTTP client) and avoid often empty queues
 func WithLazyFileRead(fn SleepFor) StreamOption {
 	return func(s *Stream) {
 		s.lazyFileReading = true
@@ -65,15 +66,15 @@ type Audio struct {
 // Read will read the audio data
 func (a *Audio) Read(b []byte) (int, error) { return a.Data.Read(b) }
 
-// Frame is a simple abstraction of what a stream will send to its listeners
-type Frame struct {
+// frame is a simple abstraction of what a stream will send to its listeners
+type frame struct {
 	data          []byte
 	title, artist string
 }
 
 // ShoutcastMetadata will build a frame to send metadata to a client that can
 // decode/parse ShoutCast metadata as a part of the audio stream from a listener
-func (f Frame) ShoutcastMetadata() []byte {
+func (f frame) ShoutcastMetadata() []byte {
 	meta := fmt.Sprintf("StreamTitle='%v - %v';", f.artist, f.title)
 
 	// is it above max size?
@@ -188,8 +189,8 @@ func (s *Stream) Start() error {
 		}
 
 		// read a frame from audio
-		frame := make([]byte, s.frameSize)
-		bytes, err := s.reading.Read(frame)
+		dataFrame := make([]byte, s.frameSize)
+		bytes, err := s.reading.Read(dataFrame)
 		if err != nil {
 			// we are done reading this audio file
 			if err == io.EOF {
@@ -210,7 +211,7 @@ func (s *Stream) Start() error {
 		wg.Add(len(s.listeners))
 		for _, l := range s.listeners {
 			go func(l *Listener) {
-				l.frame <- Frame{data: frame, artist: s.reading.Artist, title: s.reading.Title}
+				l.frame <- frame{data: dataFrame, artist: s.reading.Artist, title: s.reading.Title}
 				wg.Done()
 			}(l)
 		}

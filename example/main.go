@@ -23,7 +23,7 @@ func main() {
 		Artist:     "Fizz",
 		Title:      "Buzz",
 		Filename:   "your-mp3-file.mp3",
-		SampleRate: 44100,
+		SampleRate: 44100, // a naive assumption, use a decoder to know for sure.
 	})
 
 	http.HandleFunc("/audio", func(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +46,7 @@ func main() {
 		for !endLoop {
 			select {
 			case <-time.After(time.Second * 2):
-				// client timed out
+				// timeout
 				endLoop = true
 			case out := <-listener.Stream():
 				binary.Write(w, binary.BigEndian, out)
@@ -66,4 +66,5 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
+// To easily listen in,
 // mplayer http://localhost:8080/audio -v

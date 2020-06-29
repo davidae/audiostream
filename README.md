@@ -1,6 +1,8 @@
 # audiostream
+[![GoDoc](https://godoc.org/github.com/davidae/audiostream?status.svg)](https://godoc.org/github.com/davidae/audiostream)
+
 audiostream is a simple streaming API for audio files. It can easily be used 
-together with a HTTP server to stream audio.
+together with a HTTP server to stream audio to a HTTP client.
 
 This is package is used in an ongoing effort together with another private project. 
 
@@ -10,8 +12,8 @@ This is package is used in an ongoing effort together with another private proje
 * It will broadcast the files to any listeners in frames of bytes and the listeners can be read as a stream via channels.
 
 ## What does the API _not_ do?
-* It does not implement the SHOUTcast_ or _Icecast_ protocol.
-* It cannot decode or convert audio files. A decoder package can solve this and _ffmpeg_ can deal with converting sample rates if needed.
+* It does not implement the _SHOUTcast_ or _Icecast_ protocol.
+* It cannot decode, convert or manipulate audio files. Its up to the implementor to deal with this. A [decoder package](https://github.com/hajimehoshi/go-mp3) can solve this and _ffmpeg_ can deal with converting sample rates if needed.
 
 # Example
 See how to use the audiostream together with an HTTP server in [examples/main.go](https://github.com/davidae/audiostream/blob/master/example/main.go)
@@ -28,8 +30,7 @@ import (
 )
 
 func main() {
-	lazyFileRead := audiostream.WithFramzeSize(2)
-	stream := audiostream.NewStream(lazyFileRead)
+	stream := audiostream.NewStream(audiostream.WithFramzeSize(2))
 
 	stream.AppendAudio(&audiostream.Audio{
 		Data:       strings.NewReader("thisIsForSureNotAProperAudioFileThough"),
