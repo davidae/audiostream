@@ -16,15 +16,6 @@ import (
 	"github.com/davidae/audiostream"
 )
 
-// func TestStreamingWhenAudioQueueISEmpty(t *testing.T) {
-// 	s := audiostream.NewStream()
-// 	err := s.Start()
-
-// 	if err != audiostream.ErrNoAudioInQueue {
-// 		t.Errorf("expected error %s, but got %s", audiostream.ErrNoAudioInQueue, err)
-// 	}
-// }
-
 func TestStreamingToTwoListenersWithNoMetadata(t *testing.T) {
 	data := "123456789 101112131415161718192021222324252627"
 	s := audiostream.NewStream(audiostream.WithFramzeSize(2))
@@ -161,7 +152,7 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 			w.Header().Set("icy-metaint", "10")
 			w.Header().Set("icy-name", "hello world")
 
-			client, err := audiostream.NewListener(audiostream.WithMetadataSupport(10))
+			client, err := audiostream.NewListener(audiostream.WithIcyMetadataSupport(10))
 			noError(err, t)
 			s.AddListener(client)
 

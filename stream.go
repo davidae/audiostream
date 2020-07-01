@@ -72,9 +72,9 @@ type frame struct {
 	title, artist string
 }
 
-// ShoutcastMetadata will build a frame to send metadata to a client that can
-// decode/parse ShoutCast metadata as a part of the audio stream from a listener
-func (f frame) ShoutcastMetadata() []byte {
+// IcyMetadata will build a frame to send metadata to a client that can
+// decode/parse ICY metadata as a part of the audio stream from a listener
+func (f frame) IcyMetadata() []byte {
 	meta := fmt.Sprintf("StreamTitle='%v - %v';", f.artist, f.title)
 
 	// is it above max size?

@@ -18,9 +18,9 @@ type Listener struct {
 // ListenerOption is a func used to configure the listener upon initialization
 type ListenerOption func(*Listener)
 
-// WithMetadataSupport is usually confirmed when checking the incoming
+// WithIcyMetadataSupport is usually confirmed when checking the incoming
 // request header icy-metadata: 1
-func WithMetadataSupport(interval int64) ListenerOption {
+func WithIcyMetadataSupport(interval int64) ListenerOption {
 	return func(l *Listener) {
 		l.supportMetadata = true
 		l.metadataInterval = interval
@@ -79,7 +79,7 @@ func (l *Listener) Stream() <-chan []byte {
 				// at this point in time, we've reached the interval
 				framesWrittenInInterval = 0
 				// write metdata
-				metadata := dataFrame.ShoutcastMetadata()
+				metadata := dataFrame.IcyMetadata()
 				l.stream <- metadata
 				framesWrittenInInterval += int64(len(metadata))
 				// write remainder frame
