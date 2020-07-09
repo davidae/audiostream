@@ -34,10 +34,13 @@ func WithFramzeSize(size int) StreamOption {
 	return func(s *Stream) { s.frameSize = size }
 }
 
-// DefaultSleepForFunc is the default function one can use to estimate the time the streamer can
+// WaitFor is a function used to determine how much to sleep when using lazy read
+type WaitFor func(broadcastTime time.Duration, numBytes, sampleRate int) time.Duration
+
+// DefaultLazyWaitFunc is the default function one can use to estimate the time the streamer can
 // sleep after broadcast a frame to all the listeners. It is used in conjunction with WithLazyFileRead
 // The formula is a very rough estimation of the playtime of the frame
-func DefaultSleepForFunc() SleepFor {
+func DefaultLazyWaitFunc() WaitFor {
 	return func(broadcastTime time.Duration, numBytes, sampleRate int) time.Duration {
 		playtime := time.Duration(float64(time.Millisecond) * (float64(numBytes) / float64(sampleRate)) * 1000)
 		return playtime - broadcastTime
@@ -48,10 +51,10 @@ func DefaultSleepForFunc() SleepFor {
 // passing it on to the listeners. This can be useful if we want to keep the in-memory low,
 // provide a "now playing" functionality without using the `ICY protocol` (be in sync with what the client is reading),
 // avoid overflowing the buffer reading the stream (f.ex. an HTTP client) and avoid often empty queues
-func WithLazyFileRead(fn SleepFor) StreamOption {
+func WithLazyFileRead(fn WaitFor) StreamOption {
 	return func(s *Stream) {
 		s.lazyFileReading = true
-		s.fileReadSleepFn = fn
+		s.fileReadWaitFn = fn
 	}
 }
 
@@ -60,7 +63,6 @@ type Audio struct {
 	Data          io.Reader
 	SampleRate    int
 	Title, Artist string
-	Filename      string
 }
 
 // Read will read the audio data
@@ -91,14 +93,11 @@ func (f frame) IcyMetadata() []byte {
 	return metadata
 }
 
-// SleepFor is a function used to determine how much to sleep when using lazy read
-type SleepFor func(broadcastTime time.Duration, numBytes, sampleRate int) time.Duration
-
 // Stream is responsible for reading and broadcasting to the data to listeners
 type Stream struct {
 	frameSize       int
 	lazyFileReading bool
-	fileReadSleepFn SleepFor
+	fileReadWaitFn  WaitFor
 
 	audioMux, clientMux *sync.Mutex
 	listeners           map[string]*Listener
@@ -134,6 +133,18 @@ func (s *Stream) AppendAudio(a *Audio) {
 	s.audioMux.Lock()
 	s.queue = append(s.queue, a)
 	s.audioMux.Unlock()
+}
+
+func (s *Stream) dequeue() (*Audio, error) {
+	s.audioMux.Lock()
+	defer s.audioMux.Unlock()
+	if len(s.queue) == 0 {
+		return nil, ErrNoAudioInQueue
+	}
+
+	a := s.queue[0]
+	s.queue = s.queue[1:]
+	return a, nil
 }
 
 // AddListener adds a new listener to the stream to broadcast audio data
@@ -219,22 +230,10 @@ func (s *Stream) Start() error {
 		s.clientMux.Unlock()
 
 		finish := time.Now().Sub(start)
-		if s.lazyFileReading && s.fileReadSleepFn != nil {
-			time.Sleep(s.fileReadSleepFn(finish, bytes, s.reading.SampleRate))
+		if s.lazyFileReading && s.fileReadWaitFn != nil {
+			time.Sleep(s.fileReadWaitFn(finish, bytes, s.reading.SampleRate))
 		}
 	}
 
 	return nil
-}
-
-func (s *Stream) dequeue() (*Audio, error) {
-	s.audioMux.Lock()
-	defer s.audioMux.Unlock()
-	if len(s.queue) == 0 {
-		return nil, ErrNoAudioInQueue
-	}
-
-	a := s.queue[0]
-	s.queue = s.queue[1:]
-	return a, nil
 }

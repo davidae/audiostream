@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -11,7 +12,7 @@ import (
 )
 
 func main() {
-	lazyFileRead := audiostream.WithLazyFileRead(audiostream.DefaultSleepForFunc())
+	lazyFileRead := audiostream.WithLazyFileRead(audiostream.DefaultLazyWaitFunc())
 	stream := audiostream.NewStream(lazyFileRead)
 	audio, err := os.Open("your-mp3-file.mp3")
 	if err != nil {
@@ -22,7 +23,6 @@ func main() {
 		Data:       audio,
 		Artist:     "Fizz",
 		Title:      "Buzz",
-		Filename:   "your-mp3-file.mp3",
 		SampleRate: 44100, // a naive assumption, use a decoder to know for sure.
 	})
 
@@ -56,6 +56,12 @@ func main() {
 
 		stream.RemoveListener(listener)
 	})
+
+	go func() {
+		for {
+			fmt.Printf("end of file, queue size is now %d\n", <-stream.EndOfFile())
+		}
+	}()
 
 	go func() {
 		if err := stream.Start(); err != nil {

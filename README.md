@@ -9,7 +9,7 @@ This is package is used in an ongoing effort together with another private proje
 ## What does the API do?
 * It implements the [ICY protocol](https://cast.readme.io/docs/icy).  It's optional to use.
 * It will read files (`io.Reader`) (assumed audio/media but technically not required) from an append-able queue.
-* It will broadcast the files to any listeners in frames of bytes and the listeners can be read as a stream via channels.
+* It will broadcast the files to any listeners in frames of bytes and the listeners can read it as a stream via channels.
 
 ## What does the API _not_ do?
 * It does not implement the _SHOUTcast_ or _Icecast_ protocol.
@@ -36,7 +36,6 @@ func main() {
 		Data:       strings.NewReader("thisIsForSureNotAProperAudioFileThough"),
 		Artist:     "Fizz",
 		Title:      "Buzz",
-		Filename:   "your-mp3-file.mp3",
 		SampleRate: 44100,
 	})
 

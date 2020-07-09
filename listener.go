@@ -6,13 +6,13 @@ import (
 
 // Listener is a client used to listen to the stream of audio
 type Listener struct {
-	uuid             string
-	frame            chan frame
-	stream           chan []byte
-	startedToStream  bool
-	metadataInterval int64
+	uuid        string
+	frame       chan frame
+	stream      chan []byte
+	isStreaming bool
 
-	supportMetadata bool
+	metadataInterval int64
+	supportMetadata  bool
 }
 
 // ListenerOption is a func used to configure the listener upon initialization
@@ -49,11 +49,11 @@ func NewListener(opts ...ListenerOption) (*Listener, error) {
 
 // Stream returns a channel that sends audio from the stream
 func (l *Listener) Stream() <-chan []byte {
-	if l.startedToStream {
+	if l.isStreaming {
 		return l.stream
 	}
 
-	l.startedToStream = true
+	l.isStreaming = true
 
 	go func() {
 		var framesWrittenInInterval int64

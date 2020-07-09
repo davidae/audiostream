@@ -29,7 +29,6 @@ func TestStreamingToTwoListenersWithNoMetadata(t *testing.T) {
 	s.AppendAudio(&audiostream.Audio{
 		Artist:     "Foo ft. Bar",
 		Title:      "Hello world",
-		Filename:   "song.mp3",
 		Data:       strings.NewReader(data),
 		SampleRate: 44100,
 	})
@@ -74,7 +73,6 @@ func TestStreamingToListenerWithMultipleFiles(t *testing.T) {
 	audio := &audiostream.Audio{
 		Artist:     "Foo ft. Bar",
 		Title:      "Hello world",
-		Filename:   "song.mp3",
 		Data:       strings.NewReader(data),
 		SampleRate: 44100,
 	}
@@ -132,10 +130,9 @@ func TestStreamingMetadataWithInterval(t *testing.T) {
 	)
 
 	s.AppendAudio(&audiostream.Audio{
-		Artist:   "Foo ft. Bar",
-		Title:    "Hello world",
-		Filename: "song.mp3",
-		Data:     strings.NewReader(data),
+		Artist: "Foo ft. Bar",
+		Title:  "Hello world",
+		Data:   strings.NewReader(data),
 	})
 
 	ts := httptest.NewServer(
