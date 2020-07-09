@@ -188,9 +188,9 @@ func (s *Stream) Start() error {
 		if s.reading == nil {
 			reading, err := s.dequeue()
 			if err != nil {
+				s.reading = nil
 				// ignoring this error for now, might add a callback or smth in the future
 				if err == ErrNoAudioInQueue {
-					s.reading = nil
 					time.Sleep(time.Second)
 					continue
 				}
