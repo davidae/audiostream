@@ -85,21 +85,22 @@ func TestStreamingToListenerWithMultipleFiles(t *testing.T) {
 		s.Start()
 	}()
 
+	dequeueComplete := false
+
 	go func() {
-		for {
-			q := <-s.EndOfFile()
-			if q != 2 {
-				t.Errorf("expected queue to be 2, got %d", q)
-			}
-			q = <-s.EndOfFile()
-			if q != 1 {
-				t.Errorf("expected queue to be 1, got %d", q)
-			}
-			q = <-s.EndOfFile()
-			if q != 0 {
-				t.Errorf("expected queue to be 0, got %d", q)
-			}
+		q := <-s.Dequeued()
+		if q != 2 {
+			t.Errorf("expected queue to be 2, got %d", q)
 		}
+		q = <-s.Dequeued()
+		if q != 1 {
+			t.Errorf("expected queue to be 1, got %d", q)
+		}
+		q = <-s.Dequeued()
+		if q != 0 {
+			t.Errorf("expected queue to be 0, got %d", q)
+		}
+		dequeueComplete = true
 	}()
 
 	var outc1 string
@@ -119,6 +120,10 @@ func TestStreamingToListenerWithMultipleFiles(t *testing.T) {
 	s.Stop()
 	if outc1 != data {
 		t.Errorf("expected client 1 to have streamed %q, but got %q", data, outc1)
+	}
+
+	if !dequeueComplete {
+		t.Errorf("expected to listen and receive from dequeue channel")
 	}
 }
 

@@ -59,7 +59,7 @@ func main() {
 
 	go func() {
 		for {
-			fmt.Printf("end of file, queue size is now %d\n", <-stream.EndOfFile())
+			fmt.Printf("dequeued, queue size is now %d\n", <-stream.Dequeued())
 		}
 	}()
 

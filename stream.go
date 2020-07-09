@@ -103,7 +103,7 @@ type Stream struct {
 	listeners           map[string]*Listener
 	queue               []*Audio
 	reading             *Audio
-	eof                 chan int
+	dequeued            chan int
 	isStop              bool
 }
 
@@ -114,7 +114,7 @@ func NewStream(opts ...StreamOption) *Stream {
 		clientMux: &sync.Mutex{},
 		listeners: make(map[string]*Listener),
 		queue:     []*Audio{},
-		eof:       make(chan int),
+		dequeued:  make(chan int),
 	}
 
 	for _, o := range opts {
@@ -173,12 +173,11 @@ func (s *Stream) Stop() {
 	s.isStop = true
 }
 
-// EndOfFile sends the number of Audio items in the queue after an audio file
-// has been dropped dropped from the queue, and read and brodcast all the data
-// completely (EOF) to the listeners.
+// Dequeued sends the number of Audio items in the queue after an audio file
+// has been successfully dequeued and is going to be streamed to the listeners
 // This can be useful you want to reduce the number of files held in the queue
-func (s *Stream) EndOfFile() <-chan int {
-	return s.eof
+func (s *Stream) Dequeued() <-chan int {
+	return s.dequeued
 }
 
 // Start starts the stream.
@@ -191,12 +190,17 @@ func (s *Stream) Start() error {
 			if err != nil {
 				// ignoring this error for now, might add a callback or smth in the future
 				if err == ErrNoAudioInQueue {
+					s.reading = nil
 					time.Sleep(time.Second)
 					continue
 				}
 				return err
 			}
 			s.reading = reading
+			select {
+			case s.dequeued <- len(s.queue):
+			case <-time.After(time.Millisecond * 80):
+			}
 		}
 
 		// read a frame from audio
@@ -205,10 +209,6 @@ func (s *Stream) Start() error {
 		if err != nil {
 			// we are done reading this audio file
 			if err == io.EOF {
-				select {
-				case s.eof <- len(s.queue):
-				case <-time.After(time.Millisecond * 100):
-				}
 				s.reading = nil
 				continue
 			}
